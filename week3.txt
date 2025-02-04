@@ -1,0 +1,159 @@
+import sqlite3
+
+# Connect to SQLite database (or create it)
+conn = sqlite3.connect('finance_tracker.db')
+cursor = conn.cursor()
+
+# Create transactions table
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
+    amount REAL NOT NULL,
+    category TEXT NOT NULL,
+    date TEXT NOT NULL
+)
+''')
+conn.commit()
+
+import tkinter as tk
+from tkinter import messagebox, ttk
+import sqlite3
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
+# Initialize main window
+root = tk.Tk()
+root.title("Personal Finance Tracker")
+
+# Database connection
+conn = sqlite3.connect('finance_tracker.db')
+cursor = conn.cursor()
+
+# Function to add a transaction
+def add_transaction():
+    transaction_type = type_var.get()
+    amount = amount_entry.get()
+    category = category_entry.get()
+    date = date_entry.get()
+
+    if not amount or not category or not date:
+        messagebox.showerror("Error", "Please fill all fields")
+        return
+
+    cursor.execute('''
+    INSERT INTO transactions (type, amount, category, date)
+    VALUES (?, ?, ?, ?)
+    ''', (transaction_type, float(amount), category, date))
+    conn.commit()
+    messagebox.showinfo("Success", "Transaction added successfully")
+    amount_entry.delete(0, tk.END)
+    category_entry.delete(0, tk.END)
+    date_entry.delete(0, tk.END)
+
+# Function to generate monthly summary
+def generate_summary():
+    month = month_entry.get()
+    year = year_entry.get()
+
+    if not month or not year:
+        messagebox.showerror("Error", "Please enter month and year")
+        return
+
+    query = f'''
+    SELECT type, SUM(amount) as total
+    FROM transactions
+    WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?
+    GROUP BY type
+    '''
+    cursor.execute(query, (month.zfill(2), year))
+    results = cursor.fetchall()
+
+    if not results:
+        messagebox.showinfo("Info", "No transactions found for this month")
+        return
+
+    income = 0
+    expenses = 0
+    for row in results:
+        if row[0] == 'Income':
+            income = row[1]
+        elif row[0] == 'Expense':
+            expenses = row[1]
+
+    net_savings = income - expenses
+    summary_text = f"Income: ${income:.2f}\nExpenses: ${expenses:.2f}\nNet Savings: ${net_savings:.2f}"
+    summary_label.config(text=summary_text)
+
+# Function to generate reports
+def generate_report():
+    month = month_entry.get()
+    year = year_entry.get()
+
+    if not month or not year:
+        messagebox.showerror("Error", "Please enter month and year")
+        return
+
+    query = f'''
+    SELECT category, SUM(amount) as total
+    FROM transactions
+    WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?
+    GROUP BY category
+    '''
+    cursor.execute(query, (month.zfill(2), year))
+    results = cursor.fetchall()
+
+    if not results:
+        messagebox.showinfo("Info", "No transactions found for this month")
+        return
+
+    categories = [row[0] for row in results]
+    amounts = [row[1] for row in results]
+
+    # Create a pie chart
+    fig, ax = plt.subplots()
+    ax.pie(amounts, labels=categories, autopct='%1.1f%%', startangle=90)
+    ax.axis('equal')  # Equal aspect ratio ensures the pie chart is circular.
+
+    # Embed the chart in the Tkinter window
+    canvas = FigureCanvasTkAgg(fig, master=root)
+    canvas.draw()
+    canvas.get_tk_widget().grid(row=6, column=0, columnspan=2)
+
+# GUI Layout
+type_var = tk.StringVar(value="Income")
+tk.Label(root, text="Type:").grid(row=0, column=0)
+tk.Radiobutton(root, text="Income", variable=type_var, value="Income").grid(row=0, column=1)
+tk.Radiobutton(root, text="Expense", variable=type_var, value="Expense").grid(row=0, column=2)
+
+tk.Label(root, text="Amount:").grid(row=1, column=0)
+amount_entry = tk.Entry(root)
+amount_entry.grid(row=1, column=1)
+
+tk.Label(root, text="Category:").grid(row=2, column=0)
+category_entry = tk.Entry(root)
+category_entry.grid(row=2, column=1)
+
+tk.Label(root, text="Date (YYYY-MM-DD):").grid(row=3, column=0)
+date_entry = tk.Entry(root)
+date_entry.grid(row=3, column=1)
+
+tk.Button(root, text="Add Transaction", command=add_transaction).grid(row=4, column=0, columnspan=2)
+
+tk.Label(root, text="Month (MM):").grid(row=5, column=0)
+month_entry = tk.Entry(root)
+month_entry.grid(row=5, column=1)
+
+tk.Label(root, text="Year (YYYY):").grid(row=5, column=2)
+year_entry = tk.Entry(root)
+year_entry.grid(row=5, column=3)
+
+tk.Button(root, text="Generate Summary", command=generate_summary).grid(row=6, column=0, columnspan=2)
+summary_label = tk.Label(root, text="")
+summary_label.grid(row=7, column=0, columnspan=2)
+
+tk.Button(root, text="Generate Report", command=generate_report).grid(row=8, column=0, columnspan=2)
+
+# Run the application
+root.mainloop()
